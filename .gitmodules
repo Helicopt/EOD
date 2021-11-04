@@ -1,0 +1,3 @@
+[submodule "eod/plugins/tracking"]
+	path = eod/plugins/tracking
+	url = git@github.com:Helicopt/EOD-Tracking.git
