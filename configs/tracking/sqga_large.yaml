@@ -1,12 +1,11 @@
 num_classes: &num_classes 2
+num_ids: &num_ids 2048
 runtime:
   aligned: True
   async_norm: True
   special_bn_init: True
   runner:
     type: motfp16
-    kwargs:
-      training: false
   rank_init: true
   random_seed: 131
   iter_base: false
@@ -150,8 +149,8 @@ trainer: # Required.
       no_aug_epoch: &no_aug_epoch 15
 
 saver:
-  save_dir: checkpoints/yolox_large_fp16
-  results_dir: results_dir/yolox_large_fp16
+  save_dir: checkpoints/yolox_large_mot_fp16
+  results_dir: results_dir/yolox_large_mot_fp16
   auto_resume: True
 
 hooks:
@@ -173,7 +172,7 @@ net:
     type: mot_wrapper
     kwargs:
       cfg:
-        type: yolox_l
+        type: yolox_nano
         kwargs:
           out_layers: [2, 3, 4]
           out_strides: [8, 16, 32]
@@ -194,50 +193,60 @@ net:
     type: mot_wrapper
     kwargs:
       cfg:
-        type: YoloXHead
+        type: YoloXHeadwID
         kwargs:
           num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
+          num_ids: *num_ids
           width: 1.0
           num_point: &dense_points 1
           act_fn: { "type": "Silu" }
   - name: relation_module
     prev: roi_head
-    type: sqga
+    type: relation_yolox
     kwargs:
-      stages: 2
-  - name: yolox_post
-    prev: relation_module
-    type: yolox_post
-    kwargs:
-      num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
-      cfg:
-        loc_loss:
-          type: iou_loss
+      relation_cfgs:
+        - type: nonrelation
+          index: 0
           kwargs:
-            loss_type: square_iou
-            loss_weight: 5.0
-        cls_loss:
-          type: sigmoid_cross_entropy
-        obj_loss:
-          type: sigmoid_cross_entropy
-        anchor_generator:
-          type: fcos # yolox
+            stages: 0
+        - type: nonrelation
+          index: 2
           kwargs:
-            dense_points: *dense_points
-            center: False
-        roi_supervisor:
-          type: ota
-          kwargs:
-            num_classes: *num_classes
-            matcher:
-              type: ota
-              kwargs:
-                num_classes: *num_classes
-        roi_predictor:
-          type: yolox
-          kwargs:
-            num_classes: *num_classes
-            pre_nms_score_thresh: 0.01
-            nms:
-              type: naive
-              nms_iou_thresh: 0.65
+            stages: 0
+      yolox_kwargs:
+        num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
+        num_ids: *num_ids
+        cfg:
+          loc_loss:
+            type: iou_loss
+            kwargs:
+              loss_type: square_iou
+              loss_weight: 5.0
+          cls_loss:
+            type: sigmoid_cross_entropy
+          obj_loss:
+            type: sigmoid_cross_entropy
+          id_loss:
+            type: sigmoid_cross_entropy
+          anchor_generator:
+            type: fcos # yolox
+            kwargs:
+              dense_points: *dense_points
+              center: False
+          roi_supervisor:
+            type: ota_w_id
+            kwargs:
+              num_classes: *num_classes
+              num_ids: *num_ids
+              matcher:
+                type: ota_w_id
+                kwargs:
+                  num_classes: *num_classes
+          roi_predictor:
+            type: yolox_w_id
+            kwargs:
+              num_classes: *num_classes
+              pre_nms_score_thresh: 0.01
+              nms:
+                type: naive
+                nms_iou_thresh: 0.65
