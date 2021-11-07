@@ -172,7 +172,7 @@ net:
     type: mot_wrapper
     kwargs:
       cfg:
-        type: yolox_nano
+        type: yolox_s
         kwargs:
           out_layers: [2, 3, 4]
           out_strides: [8, 16, 32]
@@ -209,10 +209,14 @@ net:
           index: 0
           kwargs:
             stages: 0
+          loss:
+            type: sigmoid_cross_entropy
         - type: nonrelation
           index: 2
           kwargs:
             stages: 0
+          loss:
+            type: sigmoid_cross_entropy
       yolox_kwargs:
         num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
         num_ids: *num_ids
