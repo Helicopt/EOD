@@ -104,7 +104,7 @@ dataset:
         evaluator:
           type: MR
           kwargs:
-            gt_file: /mnt/lustre/share/fengweitao/annotations/train_val.json
+            gt_file: /mnt/lustre/share/fengweitao/MOT20/annotations/train_val.json
             iou_thresh: 0.5
             num_classes: *num_classes
     batch_sampler:
