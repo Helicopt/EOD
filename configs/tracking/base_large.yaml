@@ -145,9 +145,9 @@ trainer: # Required.
       no_aug_epoch: &no_aug_epoch 10
 
 saver:
-  save_dir: checkpoints/yolox_large_mot_fp16
+  save_dir: checkpoints/yolox_large_mot_base_fp16
   # pretrain_model: /mnt/lustre/share/yaoyongqiang/pod_pretrain/eod/yolox/large/ckpt_e290.pth
-  results_dir: results_dir/yolox_large_mot_fp16
+  results_dir: results_dir/yolox_large_mot_base_fp16
   auto_resume: True
   save_result: True
 
@@ -205,57 +205,43 @@ net:
           num_point: &dense_points 1
           act_fn: { "type": "Silu" }
           normalize: *Bn
-  - name: relation_module
+  - name: yolox_post
     prev: roi_head
-    type: relation_yolox
+    type: yolox_post_w_id
     kwargs:
-      relation_cfgs:
-        - type: nonrelation
-          index: 0
+      num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
+      num_ids: *num_ids
+      cfg:
+        loc_loss:
+          type: iou_loss
           kwargs:
-            stages: 0
-          loss:
-            type: sigmoid_cross_entropy
-        - type: nonrelation
-          index: 2
+            loss_type: square_iou
+            loss_weight: 5.0
+        cls_loss:
+          type: sigmoid_cross_entropy
+        obj_loss:
+          type: sigmoid_cross_entropy
+        id_loss:
+          type: sigmoid_cross_entropy
+        anchor_generator:
+          type: fcos # yolox
           kwargs:
-            stages: 0
-          loss:
-            type: sigmoid_cross_entropy
-      yolox_kwargs:
-        num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
-        num_ids: *num_ids
-        cfg:
-          loc_loss:
-            type: iou_loss
-            kwargs:
-              loss_type: square_iou
-              loss_weight: 5.0
-          cls_loss:
-            type: sigmoid_cross_entropy
-          obj_loss:
-            type: sigmoid_cross_entropy
-          id_loss:
-            type: sigmoid_cross_entropy
-          anchor_generator:
-            type: fcos # yolox
-            kwargs:
-              dense_points: *dense_points
-              center: False
-          roi_supervisor:
-            type: ota_w_id
-            kwargs:
-              num_classes: *num_classes
-              num_ids: *num_ids
-              matcher:
-                type: ota_w_id
-                kwargs:
-                  num_classes: *num_classes
-          roi_predictor:
-            type: yolox_w_id
-            kwargs:
-              num_classes: *num_classes
-              pre_nms_score_thresh: 0.001
-              nms:
-                type: naive
-                nms_iou_thresh: 0.7
+            dense_points: *dense_points
+            center: False
+        roi_supervisor:
+          type: ota_w_id
+          kwargs:
+            num_classes: *num_classes
+            num_ids: *num_ids
+            matcher:
+              type: ota_w_id
+              kwargs:
+                num_classes: *num_classes
+        roi_predictor:
+          type: yolox_w_id
+          kwargs:
+            num_classes: *num_classes
+            pre_nms_score_thresh: 0.001
+            nms:
+              type: naive
+              nms_iou_thresh: 0.7
