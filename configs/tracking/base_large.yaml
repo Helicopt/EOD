@@ -146,12 +146,17 @@ trainer: # Required.
 
 saver:
   save_dir: checkpoints/yolox_large_mot_base_fp16
-  # pretrain_model: /mnt/lustre/share/yaoyongqiang/pod_pretrain/eod/yolox/large/ckpt_e290.pth
+  pretrain_model: pretrained/yolox_large_adamw.mot.pth
   results_dir: results_dir/yolox_large_mot_base_fp16
   auto_resume: True
   save_result: True
 
 hooks:
+  - type: train_val_logger
+    kwargs:
+      freq: 10
+      skip_first_k: 5
+      logdir: log/yolox_large_mot_base_fp16
   - type: yolox_noaug
     kwargs:
       no_aug_epoch: *no_aug_epoch
