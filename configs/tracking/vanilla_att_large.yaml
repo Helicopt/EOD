@@ -145,9 +145,9 @@ trainer: # Required.
       no_aug_epoch: &no_aug_epoch 10
 
 saver:
-  save_dir: checkpoints/yolox_large_mot_fp16
+  save_dir: checkpoints/vanilla_large_mot_fp16
   pretrain_model: pretrained/yolox_large_adamw.mot.pth
-  results_dir: results_dir/yolox_large_mot_fp16
+  results_dir: results_dir/vanilla_large_mot_fp16
   auto_resume: True
   save_result: True
 
@@ -156,7 +156,7 @@ hooks:
     kwargs:
       freq: 10
       skip_first_k: 5
-      logdir: log/yolox_large_mot_fp16
+      logdir: log/vanilla_large_mot_fp16
   - type: yolox_noaug
     kwargs:
       no_aug_epoch: *no_aug_epoch
@@ -214,17 +214,19 @@ net:
     prev: roi_head
     type: relation_yolox
     kwargs:
+      num_to_refine: 800
+      num_as_ref: 150
       relation_cfgs:
-        - type: nonrelation
+        - type: vanilla
           index: 0
           kwargs:
-            stages: 0
+            num_heads: 8
           loss:
             type: sigmoid_cross_entropy
-        - type: nonrelation
+        - type: vanilla
           index: 2
           kwargs:
-            stages: 0
+            num_heads: 8
           loss:
             type: sigmoid_cross_entropy
       yolox_kwargs:
