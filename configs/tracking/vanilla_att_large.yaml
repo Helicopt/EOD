@@ -157,7 +157,7 @@ hooks:
       freq: 10
       skip_first_k: 5
       logdir: log/vanilla_large_mot_fp16
-  - type: yolox_noaug
+  - type: yolox_mot_noaug
     kwargs:
       no_aug_epoch: *no_aug_epoch
       max_epoch: *max_epoch
