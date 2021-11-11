@@ -123,7 +123,7 @@ dataset:
       pad_type: batch_pad
 
 trainer: # Required.
-  max_epoch: &max_epoch 80 # total epochs for the training
+  max_epoch: &max_epoch 40 # total epochs for the training
   save_freq: 5
   test_freq: 5
   only_save_latest: True
