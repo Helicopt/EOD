@@ -116,7 +116,7 @@ dataset:
             color_mode: BGR
         transformer: [*test_resize, *to_tensor]
         evaluator:
-          type: MR
+          type: tracking
           kwargs:
             gt_file: /mnt/lustre/share/fengweitao/MOT20/annotations/train.json
             iou_thresh: 0.5
