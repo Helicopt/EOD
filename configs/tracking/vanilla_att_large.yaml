@@ -9,6 +9,11 @@ runtime:
   model_helper:
     type: mot
 
+tracker:
+  type: pure_a
+  kwargs:
+    sim_thr: 0.8
+
 mosaic: &mosaic
   type: mosaic
   kwargs:
@@ -102,16 +107,16 @@ dataset:
             color_mode: BGR
         transformer: [*test_resize, *to_tensor]
         evaluator:
-          type: MR
+          type: tracking
           kwargs:
             gt_file: /mnt/lustre/share/fengweitao/MOT20/annotations/train_val.json
             iou_thresh: 0.5
             num_classes: *num_classes
     batch_sampler:
-      type: base
+      type: sequence
       kwargs:
         sampler:
-          type: dist
+          type: dist_seq
           kwargs: {}
         batch_size: 1
   dataloader:
@@ -121,6 +126,7 @@ dataset:
       alignment: 32
       worker_init: True
       pad_type: batch_pad
+  builder_type: custom
 
 trainer: # Required.
   max_epoch: &max_epoch 40 # total epochs for the training
