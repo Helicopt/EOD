@@ -79,11 +79,14 @@ dataset:
       kwargs:
         num_classes: *num_classes
         num_ids: *num_ids
-        meta_file: /mnt/lustre/share/fengweitao/MOT20/annotations/train_half.json
+        meta_file:
+          - /mnt/lustre/share/fengweitao/MOT20/annotations/train_half.json
+          # - /mnt/lustre/share/fengweitao/crowd_human/annotations/train.json
+          # - /mnt/lustre/share/fengweitao/crowd_human/annotations/val.json
         image_reader:
           type: fs_opencv
           kwargs:
-            image_dir: [/mnt/lustre/share/fengweitao/MOT20/, /]
+            image_dir: [/mnt/lustre/share/fengweitao/MOT20/, /, /]
             color_mode: BGR
         transformer:
           [*mosaic, *random_perspective, *flip, *train_resize, *to_tensor]
@@ -158,6 +161,9 @@ saver:
   save_result: True
 
 hooks:
+  - type: relmap_vis
+    kwargs:
+      logdir: log/sqga_large_mot_fp16
   - type: train_val_logger
     kwargs:
       freq: 10
@@ -220,8 +226,8 @@ net:
     prev: roi_head
     type: relation_yolox
     kwargs:
-      num_to_refine: 800
-      num_as_ref: 150
+      num_to_refine: 150
+      num_as_ref: 40
       relation_cfgs:
         - type: sqga
           index: 0

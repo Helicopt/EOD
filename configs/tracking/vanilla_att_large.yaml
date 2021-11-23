@@ -158,6 +158,9 @@ saver:
   save_result: True
 
 hooks:
+  - type: relmap_vis
+    kwargs:
+      logdir: log/sqga_large_mot_fp16
   - type: train_val_logger
     kwargs:
       freq: 10
@@ -220,15 +223,13 @@ net:
     prev: roi_head
     type: relation_yolox
     kwargs:
-      num_to_refine: 800
-      num_as_ref: 150
+      num_to_refine: 150
+      num_as_ref: 40
       relation_cfgs:
         - type: vanilla
           index: 0
           kwargs:
             num_heads: 8
-          loss:
-            type: sigmoid_cross_entropy
         - type: vanilla
           index: 2
           kwargs:
