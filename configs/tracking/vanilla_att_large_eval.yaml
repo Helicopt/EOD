@@ -229,8 +229,8 @@ net:
     prev: roi_head
     type: relation_yolox
     kwargs:
-      num_to_refine: 800
-      num_as_ref: 150
+      num_to_refine: 150
+      num_as_ref: 40
       relation_cfgs:
         - type: vanilla
           index: 0
