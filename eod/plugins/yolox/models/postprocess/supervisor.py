@@ -109,12 +109,13 @@ class OTASupervisor(object):
 
 @MATCHER_REGISTRY.register('ota')
 class OTAMatcher(object):
-    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5):
+    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5, img_size=[]):
         self.pos_radius = pos_radius
         self.center_sample = center_sample
         self.num_classes = num_classes - 1  # 80
         self.candidate_k = candidate_k
         self.radius = radius
+        self.img_size = img_size
 
     @torch.no_grad()
     def match(self, gts, preds, points, num_points_per_level, strides, mode='cuda'):
@@ -137,6 +138,7 @@ class OTAMatcher(object):
             assert "Not implement"
 
         if fg_mask.sum() <= 1e-6:
+<<<<<<< HEAD
             return 0, None, None, None, None, None
 
         masked_preds = preds[fg_mask]
@@ -312,6 +314,8 @@ class OTAMatcherMot17(object):
             assert "Not implement"
 
         if fg_mask.sum() <= 1e-6:
+=======
+>>>>>>> 0a9593ef10a2f652b20ca82bb694ef1ab3f14d3b
             logger.info('no gt in center')
             return 0, None, None, None, None, None
 
@@ -403,8 +407,14 @@ class OTAMatcherMot17(object):
         gt_bboxes_cx = (gt_bboxes[:, 0] + gt_bboxes[:, 2]) / 2
         gt_bboxes_cy = (gt_bboxes[:, 1] + gt_bboxes[:, 3]) / 2
 
+<<<<<<< HEAD
         gt_bboxes_cx = torch.clamp(gt_bboxes_cx, min=0, max=self.img_size[1])
         gt_bboxes_cy = torch.clamp(gt_bboxes_cy, min=0, max=self.img_size[0])
+=======
+        if len(self.img_size) > 0:
+            gt_bboxes_cx = torch.clamp(gt_bboxes_cx, min=0, max=self.img_size[1])
+            gt_bboxes_cy = torch.clamp(gt_bboxes_cy, min=0, max=self.img_size[0])
+>>>>>>> 0a9593ef10a2f652b20ca82bb694ef1ab3f14d3b
 
         gt_bboxes_l = gt_bboxes_cx.unsqueeze(1).repeat(1, A) - center_radius * expanded_strides
         gt_bboxes_r = gt_bboxes_cx.unsqueeze(1).repeat(1, A) + center_radius * expanded_strides

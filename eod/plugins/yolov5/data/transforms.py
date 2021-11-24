@@ -36,7 +36,8 @@ class Mosaic(Augmentation):
                  tar_size=640,
                  fill_color=0,
                  mosaic_self=False,
-                 memcached=None):
+                 memcached=None,
+                 clip_box=True):
         super(Mosaic, self).__init__()
         assert extra_input and dataset is not None
         self.dataset = dataset
@@ -46,6 +47,7 @@ class Mosaic(Augmentation):
             self.tar_size = [tar_size, tar_size]  # (h, w)
         self.fill_color = fill_color
         self.mosaic_self = mosaic_self
+        self.clip_box = clip_box
         self.memcached = memcached
         if self.memcached is not None:
             self.init_memcached()
@@ -72,15 +74,17 @@ class Mosaic(Augmentation):
             gt_bboxes = data['gt_bboxes']
             gt_bboxes[:, [0, 2]] += padw
             gt_bboxes[:, [1, 3]] += padh
-            gt_bboxes[:, [0, 2]] = torch.clamp(gt_bboxes[:, [0, 2]], 0, max_hw[1])
-            gt_bboxes[:, [1, 3]] = torch.clamp(gt_bboxes[:, [1, 3]], 0, max_hw[0])
+            if self.clip_box:
+                gt_bboxes[:, [0, 2]] = torch.clamp(gt_bboxes[:, [0, 2]], 0, max_hw[1])
+                gt_bboxes[:, [1, 3]] = torch.clamp(gt_bboxes[:, [1, 3]], 0, max_hw[0])
             data['gt_bboxes'] = gt_bboxes
         if data.get('gt_ignores', None) is not None:
             ig_bboxes = data['gt_ignores']
             ig_bboxes[:, [0, 2]] += padw
             ig_bboxes[:, [1, 3]] += padh
-            ig_bboxes[:, [0, 2]] = torch.clamp(ig_bboxes[:, [0, 2]], 0, max_hw[1])
-            ig_bboxes[:, [1, 3]] = torch.clamp(ig_bboxes[:, [1, 3]], 0, max_hw[0])
+            if self.clip_box:
+                ig_bboxes[:, [0, 2]] = torch.clamp(ig_bboxes[:, [0, 2]], 0, max_hw[1])
+                ig_bboxes[:, [1, 3]] = torch.clamp(ig_bboxes[:, [1, 3]], 0, max_hw[0])
             data['gt_ignores'] = ig_bboxes
         return data
 
@@ -414,8 +418,16 @@ class MosaicMot17(Augmentation):
 
 @AUGMENTATION_REGISTRY.register('random_perspective')
 class RandomPespective(Augmentation):
-    def __init__(self, degrees=0.0, translate=0.1, scale=0.5, shear=0.0,
-                 perspective=0.0, fill_color=0, max_try=1, border=(0, 0)):
+    def __init__(self,
+                 degrees=0.0,
+                 translate=0.1,
+                 scale=0.5,
+                 shear=0.0,
+                 perspective=0.0,
+                 fill_color=0,
+                 max_try=1,
+                 border=(0, 0),
+                 clip_box=True):
         super(RandomPespective, self).__init__()
         self.degrees = degrees
         self.translate = translate
@@ -425,6 +437,7 @@ class RandomPespective(Augmentation):
         self.fill_color = fill_color
         self.border = border
         self.max_try = max_try
+        self.clip_box = clip_box
 
     def label_transform(self, ori_targets, M, width, height, scale):
         targets = copy.deepcopy(ori_targets)
@@ -444,8 +457,9 @@ class RandomPespective(Augmentation):
             xy = np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
 
             # clip boxes
-            xy[:, [0, 2]] = xy[:, [0, 2]].clip(0, width - ALIGNED_FLAG.offset)
-            xy[:, [1, 3]] = xy[:, [1, 3]].clip(0, height - ALIGNED_FLAG.offset)
+            if self.clip_box:
+                xy[:, [0, 2]] = xy[:, [0, 2]].clip(0, width - ALIGNED_FLAG.offset)
+                xy[:, [1, 3]] = xy[:, [1, 3]].clip(0, height - ALIGNED_FLAG.offset)
 
             # filter candidates
             i = box_candidates(box1=targets[:, :4].cpu().numpy().T * scale, box2=xy.T)

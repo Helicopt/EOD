@@ -25,7 +25,8 @@ class YoloXRandomPespective(RandomPespective):
                  perspective=0.0,
                  fill_color=0,
                  max_try=1,
-                 border=(0, 0)):
+                 border=(0, 0),
+                 clip_box=True):
         super(YoloXRandomPespective, self).__init__(degrees,
                                                     translate,
                                                     scale,
@@ -33,7 +34,8 @@ class YoloXRandomPespective(RandomPespective):
                                                     perspective,
                                                     fill_color,
                                                     max_try,
-                                                    border)
+                                                    border,
+                                                    clip_box)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -158,7 +160,14 @@ class YoloXRandomPespectiveMot17(RandomPespective):
 
 @AUGMENTATION_REGISTRY.register('yolox_mixup_cv2')
 class YoloxMixUp_cv2(Augmentation):
-    def __init__(self, extra_input, input_size, mixup_scale, dataset=None, flip_prob=1, fill_color=114):
+    def __init__(self,
+                 extra_input,
+                 input_size,
+                 mixup_scale,
+                 dataset=None,
+                 flip_prob=1,
+                 fill_color=0,
+                 clip_box=True):
         super(YoloxMixUp_cv2, self).__init__()
         assert extra_input and dataset is not None
         self.dataset = dataset
@@ -166,6 +175,7 @@ class YoloxMixUp_cv2(Augmentation):
         self.mixup_scale = mixup_scale
         self.flip_prob = flip_prob
         self.fill_color = fill_color
+        self.clip_box = clip_box
 
     def augment(self, data):
         jit_factor = random.uniform(*self.mixup_scale)
@@ -238,8 +248,11 @@ class YoloxMixUp_cv2(Augmentation):
         padded_cropped_img = padded_img[y_offset: y_offset + target_h, x_offset: x_offset + target_w]
 
         def adjust_box_anns(bbox, scale_ratio, padw, padh, w_max, h_max):
-            bbox[:, 0::2] = np.clip(bbox[:, 0::2] * scale_ratio + padw, 0, w_max)
-            bbox[:, 1::2] = np.clip(bbox[:, 1::2] * scale_ratio + padh, 0, h_max)
+            bbox[:, 0::2] = bbox[:, 0::2] * scale_ratio + padw
+            bbox[:, 1::2] = bbox[:, 1::2] * scale_ratio + padh
+            if self.clip_box:
+                bbox[:, 0::2] = np.clip(bbox[:, 0::2], 0, w_max)
+                bbox[:, 1::2] = np.clip(bbox[:, 1::2], 0, h_max)
             return bbox
 
         cp_bboxes_origin_np = adjust_box_anns(
@@ -250,12 +263,15 @@ class YoloxMixUp_cv2(Augmentation):
                 origin_w - cp_bboxes_origin_np[:, 0::2][:, ::-1]
             )
         cp_bboxes_transformed_np = cp_bboxes_origin_np.copy()
-        cp_bboxes_transformed_np[:, 0::2] = np.clip(
-            cp_bboxes_transformed_np[:, 0::2] - x_offset, 0, target_w
-        )
-        cp_bboxes_transformed_np[:, 1::2] = np.clip(
-            cp_bboxes_transformed_np[:, 1::2] - y_offset, 0, target_h
-        )
+        cp_bboxes_transformed_np[:, 0::2] = cp_bboxes_transformed_np[:, 0::2] - x_offset
+        cp_bboxes_transformed_np[:, 1::2] = cp_bboxes_transformed_np[:, 1::2] - y_offset
+        if self.clip_box:
+            cp_bboxes_transformed_np[:, 0::2] = np.clip(
+                cp_bboxes_transformed_np[:, 0::2], 0, target_w
+            )
+            cp_bboxes_transformed_np[:, 1::2] = np.clip(
+                cp_bboxes_transformed_np[:, 1::2], 0, target_h
+            )
 
         keep_list = box_candidates(cp_bboxes_origin_np.T, cp_bboxes_transformed_np.T, 5)
 

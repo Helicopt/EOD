@@ -39,7 +39,12 @@ class CustomDataset(BaseDataset):
                  num_classes,
                  evaluator=None,
                  label_mapping=None,
+<<<<<<< HEAD
                  cache=None):
+=======
+                 cache=None,
+                 clip_box=True):
+>>>>>>> 0a9593ef10a2f652b20ca82bb694ef1ab3f14d3b
         super(CustomDataset, self).__init__(
             meta_file, image_reader, transformer, evaluator=evaluator)
 
@@ -48,6 +53,7 @@ class CustomDataset(BaseDataset):
         self.metas = []
         self.aspect_ratios = []
         self._normal_init()
+        self.clip_box = clip_box
 
         if len(self.aspect_ratios) == 0:
             self.aspect_ratios = [1] * len(self.metas)
@@ -151,8 +157,14 @@ class CustomDataset(BaseDataset):
             img_bboxes[:, [1, 3]] -= pad_w
             img_bboxes[:, [2, 4]] -= pad_h
             # clip
+<<<<<<< HEAD
             # np.clip(img_bboxes[:, [1, 3]], 0, info[1], out=img_bboxes[:, [1, 3]])
             # np.clip(img_bboxes[:, [2, 4]], 0, info[0], out=img_bboxes[:, [2, 4]])
+=======
+            if self.clip_box:
+                np.clip(img_bboxes[:, [1, 3]], 0, info[1], out=img_bboxes[:, [1, 3]])
+                np.clip(img_bboxes[:, [2, 4]], 0, info[0], out=img_bboxes[:, [2, 4]])
+>>>>>>> 0a9593ef10a2f652b20ca82bb694ef1ab3f14d3b
             img_bboxes[:, 1] /= scale_w
             img_bboxes[:, 2] /= scale_h
             img_bboxes[:, 3] /= scale_w
@@ -202,6 +214,12 @@ class CustomDataset(BaseDataset):
             if self.cache is not None:
                 img = self.get_cache_image(data)
                 img = cv2.imdecode(img, cv2.IMREAD_COLOR)
+<<<<<<< HEAD
+=======
+                if self.image_reader.color_mode != 'BGR':
+                    cvt_color = getattr(cv2, 'COLOR_BGR2{}'.format(self.image_reader.color_mode))
+                    img = cv2.cvtColor(img, cvt_color)
+>>>>>>> 0a9593ef10a2f652b20ca82bb694ef1ab3f14d3b
                 cache = True
             else:
                 img = self.image_reader(filename, data.get('image_source', 0))
