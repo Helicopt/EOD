@@ -10,10 +10,13 @@ import numpy as np
 import torch
 import copy
 from easydict import EasyDict
+import os
+import pickle as pk
 
 from eod.utils.general.log_helper import default_logger as logger
 from eod.utils.general.registry_factory import DATASET_REGISTRY
 from eod.utils.env.dist_helper import env
+from eod.data.image_reader import get_cur_image_dir
 
 # Import from local
 from .base_dataset import BaseDataset
@@ -35,7 +38,9 @@ class CustomDataset(BaseDataset):
                  transformer,
                  num_classes,
                  evaluator=None,
-                 label_mapping=None):
+                 label_mapping=None,
+                 cache=None,
+                 clip_box=True):
         super(CustomDataset, self).__init__(
             meta_file, image_reader, transformer, evaluator=evaluator)
 
@@ -44,9 +49,58 @@ class CustomDataset(BaseDataset):
         self.metas = []
         self.aspect_ratios = []
         self._normal_init()
+        self.clip_box = clip_box
 
         if len(self.aspect_ratios) == 0:
             self.aspect_ratios = [1] * len(self.metas)
+        self.cache = cache
+        if self.cache is not None:
+            cache_dir = self.cache.get('cache_dir', './')
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_name = self.cache.get('cache_name', 'cache.pkl')
+            cache_file = os.path.join(cache_dir, cache_name)
+            if not os.path.exists(cache_file):
+                self.cache_image = {}
+                self.cache_dataset()
+                if env.is_master():
+                    with open(cache_file, "wb") as f:
+                        pk.dump(self.cache_image, f)
+            else:
+                with open(cache_file, "rb") as f:
+                    self.cache_image = pk.load(f)
+
+    def cache_dataset(self):
+        from multiprocessing.pool import ThreadPool
+        NUM_THREADs = min(8, os.cpu_count())
+        pool = ThreadPool(NUM_THREADs)
+        pool.map(self.set_cache_images, self.metas)
+        pool.close()
+        pool.join()
+
+    def set_cache_images(self, data):
+        filename = data['filename']
+        image_dir = get_cur_image_dir(self.image_reader.image_dir, data.get('image_source', 0))
+        filename = os.path.join(image_dir, filename)
+        with open(filename, "rb") as f:
+            img = np.frombuffer(f.read(), np.uint8)
+            if 'tar_size' in self.cache:
+                img = cv2.imdecode(img, cv2.IMREAD_COLOR)
+                img = self.resize_img(img, self.cache['tar_size'])
+                img = cv2.imencode('.jng')[1]
+            self.cache_image[filename] = img
+
+    def resize_img(self, img, tar_size):
+        interp = cv2.INTER_LINEAR
+        h0, w0 = img.shape[:2]  # orig hw
+        r = min(1. * tar_size[0] / h0, 1. * tar_size[1] / w0)
+        if r != 1:
+            img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
+        return img
+
+    def get_cache_image(self, data):
+        image_dir = get_cur_image_dir(self.image_reader.image_dir, data.get('image_source', 0))
+        filename = os.path.join(image_dir, data['filename'])
+        return self.cache_image[filename]
 
     def _normal_init(self):
         if not isinstance(self.meta_file, list):
@@ -99,8 +153,9 @@ class CustomDataset(BaseDataset):
             img_bboxes[:, [1, 3]] -= pad_w
             img_bboxes[:, [2, 4]] -= pad_h
             # clip
-            np.clip(img_bboxes[:, [1, 3]], 0, info[1], out=img_bboxes[:, [1, 3]])
-            np.clip(img_bboxes[:, [2, 4]], 0, info[0], out=img_bboxes[:, [2, 4]])
+            if self.clip_box:
+                np.clip(img_bboxes[:, [1, 3]], 0, info[1], out=img_bboxes[:, [1, 3]])
+                np.clip(img_bboxes[:, [2, 4]], 0, info[0], out=img_bboxes[:, [2, 4]])
             img_bboxes[:, 1] /= scale_w
             img_bboxes[:, 2] /= scale_h
             img_bboxes[:, 3] /= scale_w
@@ -145,7 +200,19 @@ class CustomDataset(BaseDataset):
 
         gt_bboxes = torch.as_tensor(gt_bboxes, dtype=torch.float32)
         ig_bboxes = torch.as_tensor(ig_bboxes, dtype=torch.float32)
-        img = self.image_reader(filename, data.get('image_source', 0))
+        cache = False
+        try:
+            if self.cache is not None:
+                img = self.get_cache_image(data)
+                img = cv2.imdecode(img, cv2.IMREAD_COLOR)
+                if self.image_reader.color_mode != 'BGR':
+                    cvt_color = getattr(cv2, 'COLOR_BGR2{}'.format(self.image_reader.color_mode))
+                    img = cv2.cvtColor(img, cvt_color)
+                cache = True
+            else:
+                img = self.image_reader(filename, data.get('image_source', 0))
+        except:  # noqa 
+            img = self.image_reader(filename, data.get('image_source', 0))
         input = EasyDict({
             'image': img,
             'gt_bboxes': gt_bboxes,
@@ -155,6 +222,7 @@ class CustomDataset(BaseDataset):
             'image_id': img_id,
             'dataset_idx': idx,
             'neg_target': data.get('neg_target', 0),
+            'cache': cache
         })
         return input
 

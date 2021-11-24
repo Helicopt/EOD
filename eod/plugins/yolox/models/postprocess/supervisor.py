@@ -77,12 +77,19 @@ class OTASupervisor(object):
                     num_fg, gt_matched_classes, pred_ious_this_matching, matched_gt_inds, fg_mask, expanded_strides = \
                         self.matcher.match(gts, preds, points, num_points_per_level, strides, mode='cpu')
                 torch.cuda.empty_cache()
-                cls_target = F.one_hot(
-                    (gt_matched_classes - 1).to(torch.int64), self.num_classes
-                ) * pred_ious_this_matching.unsqueeze(-1)
-                reg_target = gts[matched_gt_inds, :4]
-                obj_target = fg_mask.unsqueeze(-1)
-                l1_target = self.get_l1_target(gts[matched_gt_inds, :4], points[fg_mask], expanded_strides[0][fg_mask])
+                if num_fg == 0:
+                    fg_mask = preds.new_zeros(preds.shape[0], dtype=torch.bool)
+                    cls_target = preds.new_zeros((0, self.num_classes))
+                    reg_target = preds.new_zeros((0, 4))
+                    obj_target = preds.new_zeros((fg_mask.shape[0], 1)).to(torch.bool)
+                    l1_target = preds.new_zeros((0, 4))
+                else:
+                    cls_target = F.one_hot(
+                        (gt_matched_classes - 1).to(torch.int64), self.num_classes
+                    ) * pred_ious_this_matching.unsqueeze(-1)
+                    reg_target = gts[matched_gt_inds, :4]
+                    obj_target = fg_mask.unsqueeze(-1)
+                    l1_target = self.get_l1_target(gts[matched_gt_inds, :4], points[fg_mask], expanded_strides[0][fg_mask])  # noqa
                 num_fgs += num_fg
             else:
                 fg_mask = preds.new_zeros(preds.shape[0], dtype=torch.bool)
@@ -102,12 +109,13 @@ class OTASupervisor(object):
 
 @MATCHER_REGISTRY.register('ota')
 class OTAMatcher(object):
-    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5):
+    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5, img_size=[]):
         self.pos_radius = pos_radius
         self.center_sample = center_sample
         self.num_classes = num_classes - 1  # 80
         self.candidate_k = candidate_k
         self.radius = radius
+        self.img_size = img_size
 
     @torch.no_grad()
     def match(self, gts, preds, points, num_points_per_level, strides, mode='cuda'):
@@ -128,6 +136,10 @@ class OTAMatcher(object):
                 gt_bboxes, strides, points, num_points_per_level)
         else:
             assert "Not implement"
+
+        if fg_mask.sum() <= 1e-6:
+            logger.info('no gt in center')
+            return 0, None, None, None, None, None
 
         masked_preds = preds[fg_mask]
         if mode == 'cpu':
@@ -216,6 +228,10 @@ class OTAMatcher(object):
 
         gt_bboxes_cx = (gt_bboxes[:, 0] + gt_bboxes[:, 2]) / 2
         gt_bboxes_cy = (gt_bboxes[:, 1] + gt_bboxes[:, 3]) / 2
+
+        if len(self.img_size) > 0:
+            gt_bboxes_cx = torch.clamp(gt_bboxes_cx, min=0, max=self.img_size[1])
+            gt_bboxes_cy = torch.clamp(gt_bboxes_cy, min=0, max=self.img_size[0])
 
         gt_bboxes_l = gt_bboxes_cx.unsqueeze(1).repeat(1, A) - center_radius * expanded_strides
         gt_bboxes_r = gt_bboxes_cx.unsqueeze(1).repeat(1, A) + center_radius * expanded_strides
