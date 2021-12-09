@@ -109,13 +109,12 @@ class OTASupervisor(object):
 
 @MATCHER_REGISTRY.register('ota')
 class OTAMatcher(object):
-    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5, img_size=[]):
+    def __init__(self, num_classes, center_sample=True, pos_radius=1, candidate_k=10, radius=2.5):
         self.pos_radius = pos_radius
         self.center_sample = center_sample
         self.num_classes = num_classes - 1  # 80
         self.candidate_k = candidate_k
         self.radius = radius
-        self.img_size = img_size
 
     @torch.no_grad()
     def match(self, gts, preds, points, num_points_per_level, strides, mode='cuda', img_size=[]):
