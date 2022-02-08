@@ -1,15 +1,22 @@
 num_classes: &num_classes 81
 runtime:
     aligned: True
-    async_norm: True
+    # async_norm: True
     special_bn_init: True
 
-mosaic: &mosaic
-  type: mosaic
-  kwargs:
-    extra_input: True
-    tar_size: 640
-    fill_color: 0
+    runner:
+      type: quant
+
+quant:
+    deploy_backend: tensorrt
+    cali_batch_size: 900
+    prepare_args:
+      extra_qconfig_dict:
+        w_observer: MinMaxObserver
+        a_observer: EMAMinMaxObserver
+        w_fakequantize: FixedFakeQuantize
+        a_fakequantize: FixedFakeQuantize
+
 
 mixup: &mixup
   type: yolox_mixup_cv2
@@ -17,6 +24,13 @@ mixup: &mixup
     extra_input: True
     input_size: [640, 640]
     mixup_scale: [0.8, 1.6]
+    fill_color: 0
+
+mosaic: &mosaic
+  type: mosaic
+  kwargs:
+    extra_input: True
+    tar_size: 640
     fill_color: 0
 
 random_perspective: &random_perspective
@@ -72,7 +86,7 @@ dataset:
           kwargs:
             image_dir: coco/train2017
             color_mode: BGR
-        transformer: [*mosaic, *random_perspective, *mixup, *augment_hsv, *flip, *train_resize, *to_tensor]
+        transformer: [*train_resize, *to_tensor]
     batch_sampler:
       type: base
       kwargs:
@@ -112,43 +126,37 @@ dataset:
       pad_type: batch_pad
 
 trainer: # Required.
-  max_epoch: &max_epoch 300             # total epochs for the training
-  save_freq: 5
-  test_freq: 5
-  only_save_latest: True
+  max_epoch: &max_epoch 6             # total epochs for the training
+  save_freq: 1
+  test_freq: 1
+  only_save_latest: False
   optimizer:                 # optimizer = SGD(params,lr=0.01,momentum=0.937,weight_decay=0.0005)
     register_type: yolov5
     type: SGD
     kwargs:
-      lr: 0.00015625
+      lr: 0.0000003125
       momentum: 0.9
       nesterov: True
-      weight_decay: 0.0005      # weight_decay = 0.0005 * batch_szie / 64
-  lr_scheduler:
-    lr_register_type: yolox_base
-    warmup_epochs: 5       # set to be 0 to disable warmup. When warmup,  target_lr = init_lr * total_batch_size
-    warmup_type: yolox_cos
-    type: YoloXCosineLR
+      weight_decay: 0.0      # weight_decay = 0.0005 * batch_szie / 64
+  lr_scheduler:              # lr_scheduler = MultStepLR(optimizer, milestones=[9,14],gamma=0.1)
+    warmup_epochs: 0        # set to be 0 to disable warmup. When warmup,  target_lr = init_lr * total_batch_size
+    warmup_type: linear
+    warmup_ratio: 0.001
+    type: MultiStepLR
     kwargs:
-      T_max: *max_epoch
-      min_lr_scale: 0.05
-      no_aug_epoch: &no_aug_epoch 15
+      milestones: [2, 4]     # epochs to decay lr
+      gamma: 0.1             # decay rate
 
 saver:
-  save_dir: checkpoints/yolox_small
-  results_dir: results_dir/yolox_small
-  auto_resume: True
+  save_dir: checkpoints/yolox_s_ret_a1_comloc_quant_trt
+  results_dir: results_dir/yolox_s_ret_a1_comloc_quant_trt
+  pretrain_model: pretrained_fp32/ckpt_best.pth
+  auto_resume: False
 
-hooks:
-  - type: yolox_noaug
-    kwargs:
-      no_aug_epoch: *no_aug_epoch
-      max_epoch: *max_epoch
-      transformer: [*augment_hsv, *flip, *train_resize, *to_tensor]
-  - type: auto_save_best
+
 
 ema:
-  enable: True
+  enable: False
   ema_type: exp
   kwargs:
     decay: 0.9998
@@ -159,7 +167,7 @@ net:
     kwargs:
       out_layers: [2, 3, 4]
       out_strides: [8, 16, 32]
-      normalize: {'type': 'solo_bn' }
+      normalize: {'type': 'freeze_bn' }
       act_fn: {'type': 'Silu' }
   - name: neck
     prev: backbone
@@ -167,6 +175,7 @@ net:
     kwargs:
       depth: 0.33
       out_strides: [8, 16, 32]
+      normalize: {'type': 'freeze_bn' }
       act_fn: {'type': 'Silu'}
   - name: roi_head
     prev: neck
@@ -175,40 +184,52 @@ net:
       num_classes: *num_classes
       width: 0.5
       num_point: &dense_points 1
+      normalize: {'type': 'freeze_bn' }
       act_fn: {'type': 'Silu'}
-  - name: yolox_post
+  - name: post_process
     prev: roi_head
-    type: yolox_post
+    type: retina_post_iou
     kwargs:
-      num_classes: *num_classes
+      num_classes: *num_classes   # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
       cfg:
-        loc_loss:
-          type: iou_loss
-          kwargs:
-            loss_type: square_iou
-            loss_weight: 5.0
         cls_loss:
+          type: quality_focal_loss
+          kwargs:
+            gamma: 2.0
+        iou_branch_loss: 
           type: sigmoid_cross_entropy
-        obj_loss:
-          type: sigmoid_cross_entropy
+        loc_loss:
+           type: compose_loc_loss
+           kwargs:
+              loss_cfg:
+                 - type: iou_loss
+                   kwargs:
+                      loss_type: giou
+                      loss_weight: 1.0
+                 - type: l1_loss
+                   kwargs:
+                      loss_weight: 1.0
         anchor_generator:
-          type: fcos # yolox
+          type: hand_craft
           kwargs:
-            dense_points: *dense_points
-            center: False
+            anchor_ratios: [1]  # anchor strides are provided as feature strides by feature extractor
+            anchor_scales: [4] # scale of anchors relative to feature map
         roi_supervisor:
-          type: ota
+          type: atss
           kwargs:
-            num_classes: *num_classes
-            matcher:
-              type: ota
-              kwargs:
-                num_classes: *num_classes
+            top_n: 9
+            use_iou: True
         roi_predictor:
-          type: yolox
+          type: base
           kwargs:
-            num_classes: *num_classes
-            pre_nms_score_thresh: 0.01
-            nms:
-              type: naive
-              nms_iou_thresh: 0.65
+            pre_nms_score_thresh: 0.05  # to reduce computation
+            pre_nms_top_n: 1000
+            post_nms_top_n: 1000
+            roi_min_size: 0               # minimum scale of a valid roi
+            merger:
+              type: retina
+              kwargs:
+                top_n: 100
+                nms:
+                  type: naive
+                  nms_iou_thresh: 0.65  

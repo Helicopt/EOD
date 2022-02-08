@@ -27,6 +27,7 @@ class YoloxPAFPN(nn.Module):
                  normalize={'type': 'solo_bn'},
                  downsample_plane=256):
         super(YoloxPAFPN, self).__init__()
+        self.inplanes = inplanes
         in_channels = inplanes
         self.outplanes = inplanes
         self.out_strides = out_strides
@@ -121,18 +122,18 @@ class YoloxPAFPN(nn.Module):
         pan_out0 = self.C3_n4(p_out0)  # 1024->1024/32
         features.append(pan_out0)
         x = features[-1]
-        for i in range(self.num_level - len(laterals)):
-            level = i + len(laterals)
+        for i in range(self.num_level - len(self.inplanes)):
+            level = i + len(self.inplanes)
             x = self.get_downsample(level)(x)
             features.append(x)
 
-        return {'features': features, 'strides': self.out_strides}
+        return {'features': features, 'strides': self.get_outstrides()}
 
     def get_outplanes(self):
         return self.outplanes
 
     def get_outstrides(self):
-        return self.out_strides
+        return torch.tensor(self.out_strides, dtype=torch.int)
 
     def get_downsample(self, idx):
         return getattr(self, f"p{idx}_conv")
