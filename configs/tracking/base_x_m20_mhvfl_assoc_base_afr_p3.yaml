@@ -18,15 +18,12 @@ tracker:
   type: fr_aware_tracker
   # type: bytetracker_ma
   kwargs:
-    # xgb_model: /home/toka/code/EOD/eod/tasks/trk/tools/xgb_lfr_25.model #sqga_m20.model
     nn_model:
-      model_def: /home/toka/code/CMS/pytorch/models.py
+      model_def: eod/tasks/trk/models/head/fra_assoc.py
       model_name: AssocModel
       model_args: { framerate_mode: auto }
-      model_ckpt: /home/toka/code/CMS/pytorch/assoc_auto_x_2/latest.pth
+      model_ckpt: checkpoints/assoc_re2/association.pth
     nn_gatings: [0.9, 0.9]
-    xgb_model: /home/toka/code/EOD/eod/tasks/trk/tools/xgb_assoc.model #sqga_m20.model
-    xgb_gatings: [0.9, 0.9]
     # use_gt: True
     # collect: cm
     cfg:
