@@ -443,8 +443,11 @@ class AutoSaveBest(Hook):
         # get past best ckpt metric val
         ckpt_path = os.path.join(self.runner_ref().saver.save_dir, 'ckpt_best.pth')
         if os.path.exists(ckpt_path):
-            self.best_metric_val = self.runner_ref().saver.load_checkpoint(ckpt_path).get('metric_val', -1)
-            self.best_epoch = self.runner_ref().saver.load_checkpoint(ckpt_path).get('epoch', 0)
+            best_ckpt = self.runner_ref().saver.load_checkpoint(ckpt_path)
+            self.best_metric_val = best_ckpt.get('metric_val', -1)
+            self.best_epoch = best_ckpt.get('epoch', 0)
+            del best_ckpt
+            torch.cuda.empty_cache()
 
     def _save_best(self, prefix='best', metric_val=0):
         cur_epoch = self.runner_ref().cur_epoch()

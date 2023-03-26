@@ -21,5 +21,14 @@ build
 **/build
 
 .vscode/
+data/*
+results_dir/*
+checkpoints/*
+log/*
+output_log/*
 *_build
 .env
+*.pth
+*.pkl
+data/eval_result/*
+*.jpg
