@@ -1,18 +1,44 @@
 num_classes: &num_classes 2
-num_ids: &num_ids 2048
+num_ids: &num_ids 3072
+num_orient_class: &num_orient_class 8
+clip_box: &clip_box True
 runtime:
   aligned: True
   async_norm: True
   special_bn_init: True
   runner:
     type: motfp16
+    kwargs:
+      cache: True
   model_helper:
     type: mot
+  fp16: True
 
 tracker:
-  type: pure_a
+  type: fr_aware_tracker
+  # type: bytetracker_ma
   kwargs:
-    sim_thr: 0.8
+    # xgb_model: /home/toka/code/EOD/eod/tasks/trk/tools/xgb_lfr_25.model #sqga_m20.model
+    nn_model:
+      model_def: /home/toka/code/CMS/pytorch/models.py
+      model_name: AssocModel
+      model_args: { framerate_mode: auto }
+      model_ckpt: /home/toka/code/CMS/pytorch/assoc_auto_x_2/latest.pth
+    nn_gatings: [0.9, 0.9]
+    xgb_model: /home/toka/code/EOD/eod/tasks/trk/tools/xgb_assoc.model #sqga_m20.model
+    xgb_gatings: [0.9, 0.9]
+    # use_gt: True
+    # collect: cm
+    cfg:
+      track_thresh: 0.6
+      track_buffer: 30
+      match_thresh: 0.9
+      conf_thresh: 0.1
+      sim_thresh: 0.8
+
+window: &window
+  type: window
+  kwargs: {}
 
 mosaic: &mosaic
   type: mosaic
@@ -21,7 +47,7 @@ mosaic: &mosaic
     tar_size: &tar_size [896, 1600]
     fill_color: 0
     mosaic_self: False
-    clip_box: True
+    clip_box: *clip_box
 
 random_perspective: &random_perspective
   type: random_perspective_yolox
@@ -33,7 +59,7 @@ random_perspective: &random_perspective
     perspective: 0.0
     fill_color: 0 # 0
     border: [-448, -800]
-    clip_box: True
+    clip_box: *clip_box
 
 augment_hsv: &augment_hsv
   type: augment_hsv
@@ -47,10 +73,10 @@ mixup: &mixup
   type: yolox_mixup_cv2
   kwargs:
     extra_input: True
-    input_size: [896, 1600]
+    input_size: *tar_size
     mixup_scale: [0.8, 1.6]
     fill_color: 0
-    clip_box: True
+    clip_box: *clip_box
 
 flip: &flip
   type: flip
@@ -66,7 +92,7 @@ train_resize: &train_resize
     #max_size: 640
     #padding_type: left_top
     #padding_val: 0
-    random_size: [20, 36]
+    random_size: [30, 45]
 
 test_resize: &test_resize
   type: keep_ar_resize_max
@@ -82,40 +108,55 @@ dataset:
       kwargs:
         num_classes: *num_classes
         num_ids: *num_ids
+        ignore_vis_under: 0.05
+        multiframerates: [1, 2, 4, 8, 16, 25, 36, 50, 75]
+        num_expected: 1
         meta_file:
-          - /mnt/lustre/share/fengweitao/MOT20/annotations/train_half.json
+          # - /mnt/lustre/share/fengweitao/crowd_human/annotations/train.json
+          # - /mnt/lustre/share/fengweitao/crowd_human/annotations/val.json
+          - /mnt/lustre/share/fengweitao/MOT20/annotations/train_mfr_mid100_sep_mid.json
         image_reader:
           type: fs_opencv
           kwargs:
             image_dir:
+              - /
+              - /
               - /
             color_mode: BGR
         transformer:
           [
             *mosaic,
             *random_perspective,
+            *mixup,
             *augment_hsv,
             *flip,
             *train_resize,
             *to_tensor,
           ]
+        noaug_ratio: 1.0
+        transformer_noaug:
+          &transform_noaug [*augment_hsv, *flip, *train_resize, *to_tensor]
         cache:
           cache_dir: ./caches
-          cache_name: mot20_trainval.pkl
-        clip_box: True
+          cache_name: mot20_train_ch.pkl
+        clip_box: *clip_box
     batch_sampler:
       type: base
       kwargs:
         sampler:
           type: dist
           kwargs: {}
-        batch_size: 1
+        batch_size: 3
   test:
     dataset:
       type: mot
       kwargs:
         num_classes: *num_classes
-        meta_file: &gt_file /mnt/lustre/share/fengweitao/MOT20/annotations/train_val.json
+        num_expected: 1
+        # meta_file: &gt_file /mnt/lustre/share/fengweitao/MOT20/annotations/train_multi_framerate_brief_sep_val.json
+        meta_file: &gt_file /mnt/lustre/share/fengweitao/MOT20/annotations/train_mfr_mid100_sep_val.json
+        # filter: "S-1-0-MOT20-01"
+        # filter: "S-1"
         image_reader:
           type: fs_opencv
           kwargs:
@@ -123,11 +164,32 @@ dataset:
             color_mode: BGR
         transformer: [*test_resize, *to_tensor]
         evaluator:
-          type: tracking
+          type: TrackEval
           kwargs:
-            gt_file: /mnt/lustre/share/fengweitao/MOT20/annotations/train_val.json
+            gt_file: *gt_file
             iou_thresh: 0.5
+            fppi: [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
             num_classes: *num_classes
+            track_eval:
+              METRICS: ["HOTA", "CLEAR", "Identity"]
+              THRESHOLD: 0.5
+              BENCHMARK: MOT17
+              USE_PARALLEL: true
+              NUM_PARALLEL_CORES: 16
+            fast_eval: True
+            group_by:
+              [
+                "S-1-",
+                "S-2-",
+                "S-4-",
+                "S-8-",
+                "S-16-",
+                "S-25-",
+                "S-36-",
+                "S-50-",
+                "S-75-",
+              ]
+            formatter: "{root}/{seq}/{fr}.{ext}"
         #evaluator:
         #  type: MR
         #  kwargs:
@@ -135,10 +197,10 @@ dataset:
         #    iou_thresh: 0.5
         #    fppi: [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
         #    num_classes: *num_classes
-        clip_box: True
+        clip_box: *clip_box
         cache:
           cache_dir: ./caches
-          cache_name: mot20_test.pkl
+          cache_name: mot20_train_ch.pkl
     batch_sampler:
       type: sequence
       kwargs:
@@ -149,55 +211,57 @@ dataset:
   dataloader:
     type: mot
     kwargs:
-      num_workers: 8
+      num_workers: 12
       alignment: 32
       worker_init: True
       pad_type: batch_pad
   builder_type: custom
 
 trainer: # Required.
-  max_epoch: &max_epoch 40 # total epochs for the training
-  save_freq: 5
-  test_freq: 5
+  max_epoch: &max_epoch 1200 # total epochs for the training
+  save_freq: 50
+  test_freq: 100
   only_save_latest: True
   optimizer: # optimizer = SGD(params,lr=0.01,momentum=0.937,weight_decay=0.0005)
     register_type: yolov5
     type: SGD
     kwargs:
-      lr: 0.00003125
+      lr: 0.00001
       momentum: 0.9
       nesterov: True
       weight_decay: 0.0005
   lr_scheduler:
     lr_register_type: yolox_base
-    warmup_epochs: 1 # set to be 0 to disable warmup. When warmup,  target_lr = init_lr * total_batch_size
+    warmup_epochs: 20 # set to be 0 to disable warmup. When warmup,  target_lr = init_lr * total_batch_size
     warmup_type: yolox_cos
     type: YoloXCosineLR
     kwargs:
       T_max: *max_epoch
-      min_lr_scale: 0.5
-      no_aug_epoch: &no_aug_epoch 38
+      min_lr_scale: 0.05
+      no_aug_epoch: &no_aug_epoch 100
 
 saver:
-  save_dir: checkpoints/base_yolox_x_m20_noaug
-  pretrain_model: pretrained/yolox_x_m20_sgd.mot.pth
-  results_dir: results_dir/base_yolox_x_m20_noaug
+  save_dir: checkpoints/assoc_re2
+  pretrain_model: checkpoints/assoc_re2/ckpt_latest.pth
+  results_dir: results_dir/assoc_re2
   auto_resume: True
   save_result: True
 
 hooks:
+  - type: custom_auto_save
+    kwargs:
+      save_epochs: [700, 800]
   - type: train_val_logger
     kwargs:
       freq: 10
       skip_first_k: 5
-      logdir: log/base_yolox_x_m20_noaug
-  - type: yolox_noaug
+      logdir: log_new/assoc_re2
+  - type: yolox_mot_noaug
     kwargs:
       no_aug_epoch: *no_aug_epoch
       max_epoch: *max_epoch
-      transformer: [*augment_hsv, *flip, *train_resize, *to_tensor]
-      test_freq: 2
-  - type: auto_save_best
+      transformer: *transform_noaug
+      test_freq: 50
 
 ema:
   enable: True
@@ -211,6 +275,16 @@ Bn: &Bn
   #    bn_group_size: 2
 
 net:
+  - name: fix_layers
+    type: self
+    kwargs:
+      freeze_patterns:
+        - "backbone"
+        - "neck"
+        - "roi_head"
+        - "yolox_post.lw"
+        # - "assoc_head.att_net"
+        # - "assoc_head.diff_norm"
   - name: backbone
     type: mot_wrapper
     kwargs:
@@ -241,27 +315,56 @@ net:
         kwargs:
           num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
           num_ids: *num_ids
+          # normalize_id: True
+          fuse_lvls_for_id: True
           width: 1.25
           num_point: &dense_points 1
           act_fn: { "type": "Silu" }
           normalize: *Bn
+  - name: assoc_head
+    prev: roi_head
+    type: yolox_assoc
+    kwargs:
+      feature_type: mid
+      auto_framerate: True
+      control: min
+      norm_on_highlvl: False
+      pred_framerate: &pred_framerate True
+      return_extra: True
+      num_classes: *num_classes
+      pre_nms_score_thresh: 0.001
+      nms:
+        type: naive
+        nms_iou_thresh: 0.7
+      anchor_generator:
+        type: fcos # yolox
+        kwargs:
+          dense_points: *dense_points
+          center: False
   - name: yolox_post
     prev: roi_head
-    type: yolox_post_w_id
+    type: yolox_post_w_assoc
     kwargs:
       num_classes: *num_classes # number of classes including backgroudn. for rpn, it's 2; for RetinaNet, it's 81
       num_ids: *num_ids
+      balanced_loss_weight: auto
+      balance_scale: 2
+      dismiss_aug: True
+      pred_framerate: *pred_framerate
+      ignore_aug: True
       cfg:
         loc_loss:
           type: iou_loss
           kwargs:
-            loss_type: square_iou
-            loss_weight: 5.0
+            loss_type: giou
+            loss_weight: 3.0
         cls_loss:
           type: sigmoid_cross_entropy
         obj_loss:
           type: sigmoid_cross_entropy
         id_loss:
+          type: sigmoid_cross_entropy
+        assoc_loss:
           type: sigmoid_cross_entropy
         anchor_generator:
           type: fcos # yolox
@@ -277,6 +380,7 @@ net:
               type: ota_w_id
               kwargs:
                 num_classes: *num_classes
+                candidate_k: 20
         roi_predictor:
           type: yolox_w_id
           kwargs:
